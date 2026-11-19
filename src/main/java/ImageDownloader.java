@@ -25,49 +25,22 @@ public class ImageDownloader {
             System.err.println("Uso: java ImageDownloader <URL>");
             return;
         }
-        URL url = null;
+
+        URL url;
         try {
-            URI uri = URI.create(args[0]);
-            url = uri.toURL();
-
-            String protocol = url.getProtocol();
-            String host = url.getHost();
-
-            if (!"http".equalsIgnoreCase(protocol) && !"https".equalsIgnoreCase(protocol)) {
-                System.err.println("Protocolo no admitido (solo HTTP o HTTPS): " + protocol);
-                return;
-            }
-            if (host == null || host.isBlank()) {
-                System.err.println("URL inválida: no se especificó un servidor válido.");
-                return;
-            }
-            System.out.println("Protocolo: " + protocol);
-            System.out.println("Servidor: " + host);
-            System.out.println("Puerto: " + url.getPort());
-            System.out.println("Ruta: " + url.getPath());
-        } catch (IllegalArgumentException e) {
+            url = validarURL(args[0]);
+        } catch (IllegalArgumentException | MalformedURLException e) {
             System.err.println("URL inválida: " + e.getMessage());
             return;
-        } catch (MalformedURLException e) {
-            System.err.println("URL no admitida: " + e.getMessage());
-            return;
         }
+
+        System.out.println("Protocolo: " + url.getProtocol());
+        System.out.println("Servidor: " + url.getHost());
+        System.out.println("Puerto: " + url.getPort());
+        System.out.println("Ruta: " + url.getPath());
+
         try {
-            URLConnection connection = url.openConnection();
-            connection.setConnectTimeout(10000);
-            connection.setReadTimeout(15000);
-
-            if (connection instanceof HttpURLConnection httpConn) {
-                System.out.println("Código HTTP: " + httpConn.getResponseCode());
-            }
-
-            String contentType = connection.getContentType();
-            System.out.println("Tipo de contenido: " + contentType);
-
-            Charset charset = detectarCharset(contentType);
-            System.out.println("Codificación utilizada: " + charset.name());
-
-            String html = leerHtml(connection.getInputStream(), charset);
+            String html = obtenerHTML(url);
 
             if (html != null && !html.isEmpty()) {
                 int limite = Math.min(500, html.length());
@@ -76,11 +49,13 @@ public class ImageDownloader {
             } else {
                 System.out.println("No hay contenido disponible para mostrar.");
             }
+
             Set<String> imagenes = extraerImagenes(html);
             System.out.println("\nReferencias a imágenes encontradas (" + imagenes.size() + "):");
             for (String img : imagenes) {
                 System.out.println(" - " + img);
             }
+
             Set<URL> urlsImagenes = new LinkedHashSet<>();
             System.out.println("\nURLs de imágenes resueltas:");
             for (String ref : imagenes) {
@@ -92,6 +67,7 @@ public class ImageDownloader {
                     System.err.println(" - Omitida (" + ref + "): " + e.getMessage());
                 }
             }
+
             Path carpetaImagenes = Path.of("imagenes");
             Files.createDirectories(carpetaImagenes);
 
@@ -290,5 +266,51 @@ public class ImageDownloader {
             case "image/svg+xml" -> ".svg";
             default -> ".img";
         };
+    }
+    public static URL validarURL(String argumento) throws MalformedURLException {
+        if (argumento == null || argumento.isBlank()) {
+            throw new IllegalArgumentException("La URL no puede estar vacía.");
+        }
+
+        URI uri = URI.create(argumento.trim());
+        URL url = uri.toURL();
+
+        String protocol = url.getProtocol();
+        String host = url.getHost();
+
+        if (!"http".equalsIgnoreCase(protocol) && !"https".equalsIgnoreCase(protocol)) {
+            throw new IllegalArgumentException("Protocolo no admitido (solo HTTP o HTTPS): " + protocol);
+        }
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("No se especificó un servidor válido.");
+        }
+
+        return url;
+    }
+
+    public static String obtenerHTML(URL url) throws IOException {
+        URLConnection connection = url.openConnection();
+        connection.setConnectTimeout(10000);
+        connection.setReadTimeout(15000);
+
+        HttpURLConnection httpConn = (connection instanceof HttpURLConnection conn) ? conn : null;
+        try {
+            if (httpConn != null) {
+                httpConn.setRequestMethod("GET");
+                System.out.println("Código HTTP: " + httpConn.getResponseCode());
+            }
+
+            String contentType = connection.getContentType();
+            System.out.println("Tipo de contenido: " + contentType);
+
+            Charset charset = detectarCharset(contentType);
+            System.out.println("Codificación utilizada: " + charset.name());
+
+            return leerHtml(connection.getInputStream(), charset);
+        } finally {
+            if (httpConn != null) {
+                httpConn.disconnect();
+            }
+        }
     }
 }
