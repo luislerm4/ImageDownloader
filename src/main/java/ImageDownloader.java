@@ -11,6 +11,10 @@ import java.nio.charset.Charset;
 import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
 import java.nio.charset.UnsupportedCharsetException;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ImageDownloader {
     public static void main(String[] args) {
@@ -69,6 +73,11 @@ public class ImageDownloader {
             } else {
                 System.out.println("No hay contenido disponible para mostrar.");
             }
+            Set<String> imagenes = extraerImagenes(html);
+            System.out.println("\nReferencias a imágenes encontradas (" + imagenes.size() + "):");
+            for (String img : imagenes) {
+                System.out.println(" - " + img);
+            }
         } catch (IOException e) {
             System.err.println("Error al conectar o leer el recurso: " + e.getMessage());
         }
@@ -102,5 +111,28 @@ public class ImageDownloader {
             }
         }
         return sb.toString();
+    }
+    public static Set<String> extraerImagenes(String html) {
+        Set<String> referencias = new LinkedHashSet<>();
+        if (html == null || html.isBlank()) {
+            return referencias;
+        }
+
+        Pattern imgPattern = Pattern.compile("<img\\b[^>]*>", Pattern.CASE_INSENSITIVE);
+        Pattern srcPattern = Pattern.compile("\\bsrc\\s*=\\s*([\"'])(.*?)\\1", Pattern.CASE_INSENSITIVE);
+
+        Matcher imgMatcher = imgPattern.matcher(html);
+        while (imgMatcher.find()) {
+            String etiqueta = imgMatcher.group();
+            Matcher srcMatcher = srcPattern.matcher(etiqueta);
+            if (srcMatcher.find()) {
+                String rutaSrc = srcMatcher.group(2).trim();
+                if (!rutaSrc.isEmpty()) {
+                    referencias.add(rutaSrc);
+                }
+            }
+        }
+
+        return referencias;
     }
 }
