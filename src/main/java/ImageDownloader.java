@@ -78,6 +78,17 @@ public class ImageDownloader {
             for (String img : imagenes) {
                 System.out.println(" - " + img);
             }
+            Set<URL> urlsImagenes = new LinkedHashSet<>();
+            System.out.println("\nURLs de imágenes resueltas:");
+            for (String ref : imagenes) {
+                try {
+                    URL imgUrl = resolverImagen(url, ref);
+                    urlsImagenes.add(imgUrl);
+                    System.out.println(" - " + imgUrl);
+                } catch (Exception e) {
+                    System.err.println(" - Omitida (" + ref + "): " + e.getMessage());
+                }
+            }
         } catch (IOException e) {
             System.err.println("Error al conectar o leer el recurso: " + e.getMessage());
         }
@@ -134,5 +145,33 @@ public class ImageDownloader {
         }
 
         return referencias;
+    }
+    public static URL resolverImagen(URL urlPagina, String referencia) throws Exception {
+        if (urlPagina == null) {
+            throw new IllegalArgumentException("La URL base de la página no puede ser nula.");
+        }
+        if (referencia == null || referencia.isBlank()) {
+            throw new IllegalArgumentException("La referencia de imagen está vacía.");
+        }
+
+        String limpia = referencia.trim();
+        String minuscula = limpia.toLowerCase();
+
+        if (minuscula.startsWith("data:") || minuscula.startsWith("javascript:")) {
+            throw new IllegalArgumentException("Esquema no admitido: " + limpia);
+        }
+
+        URL resuelta = new URL(urlPagina, limpia);
+        String protocolo = resuelta.getProtocol();
+
+        if (!"http".equalsIgnoreCase(protocolo) && !"https".equalsIgnoreCase(protocolo)) {
+            throw new IllegalArgumentException("Protocolo no admitido en imagen: " + protocolo);
+        }
+
+        if (resuelta.getHost() == null || resuelta.getHost().isBlank()) {
+            throw new IllegalArgumentException("La URL resultante no tiene servidor válido: " + resuelta);
+        }
+
+        return resuelta;
     }
 }
