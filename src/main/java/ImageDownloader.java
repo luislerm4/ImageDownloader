@@ -15,6 +15,9 @@ import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 
 public class ImageDownloader {
     public static void main(String[] args) {
@@ -89,6 +92,19 @@ public class ImageDownloader {
                     System.err.println(" - Omitida (" + ref + "): " + e.getMessage());
                 }
             }
+            Path carpetaImagenes = Path.of("imagenes");
+            Files.createDirectories(carpetaImagenes);
+
+            int contador = 1;
+            int descargadas = 0;
+            System.out.println("\nDescargando imágenes en: " + carpetaImagenes.toAbsolutePath());
+            for (URL imgUrl : urlsImagenes) {
+                if (descargarImagen(imgUrl, carpetaImagenes, contador)) {
+                    descargadas++;
+                }
+                contador++;
+            }
+            System.out.println("Total descargadas: " + descargadas + " de " + urlsImagenes.size());
         } catch (IOException e) {
             System.err.println("Error al conectar o leer el recurso: " + e.getMessage());
         }
@@ -173,5 +189,106 @@ public class ImageDownloader {
         }
 
         return resuelta;
+    }
+    public static boolean descargarImagen(URL urlImagen, Path directorio, int numero) {
+        final long MAX_BYTES = 10L * 1024L * 1024L; // 10 MB
+
+        if (urlImagen == null || directorio == null) {
+            System.err.println("Parámetros inválidos para descargar imagen.");
+            return false;
+        }
+
+        HttpURLConnection httpConn = null;
+        Path destino = null;
+
+        try {
+            Files.createDirectories(directorio);
+
+            URLConnection connection = urlImagen.openConnection();
+            connection.setConnectTimeout(10000);
+            connection.setReadTimeout(15000);
+
+            if (connection instanceof HttpURLConnection conn) {
+                httpConn = conn;
+                httpConn.setRequestMethod("GET");
+                int codigo = httpConn.getResponseCode();
+                if (codigo < 200 || codigo >= 300) {
+                    System.err.println("Respuesta HTTP no exitosa (" + codigo + ") para: " + urlImagen);
+                    return false;
+                }
+            }
+
+            String contentType = connection.getContentType();
+            if (contentType == null) {
+                System.err.println("Sin Content-Type para: " + urlImagen);
+                return false;
+            }
+
+            String tipoMime = contentType.split(";")[0].trim().toLowerCase();
+            if (!tipoMime.startsWith("image/")) {
+                System.err.println("El recurso no es una imagen (" + contentType + "): " + urlImagen);
+                return false;
+            }
+
+            String extension = obtenerExtensionPorMime(tipoMime);
+            String nombreArchivo = String.format("imagen_%03d%s", numero, extension);
+            destino = directorio.resolve(nombreArchivo);
+
+            if (Files.exists(destino)) {
+                System.err.println("El archivo ya existe, se omite para no sobrescribir: " + destino);
+                return false;
+            }
+
+            long contentLength = connection.getContentLengthLong();
+            if (contentLength > MAX_BYTES) {
+                System.err.println("Imagen excede el límite de 10 MB según Content-Length: " + urlImagen);
+                return false;
+            }
+
+            try (InputStream in = connection.getInputStream()) {
+                byte[] buffer = new byte[8192];
+                long totalBytes = 0;
+
+                try (var out = Files.newOutputStream(destino)) {
+                    int leidos;
+                    while ((leidos = in.read(buffer)) != -1) {
+                        totalBytes += leidos;
+                        if (totalBytes > MAX_BYTES) {
+                            throw new IOException("Se excedió el límite de 10 MB durante la lectura.");
+                        }
+                        out.write(buffer, 0, leidos);
+                    }
+                }
+
+                System.out.println("Guardada (" + totalBytes + " bytes): " + destino);
+                return true;
+            }
+
+        } catch (Exception e) {
+            System.err.println("Error al descargar " + urlImagen + ": " + e.getMessage());
+            if (destino != null) {
+                try {
+                    Files.deleteIfExists(destino);
+                } catch (IOException ignored) {
+                }
+            }
+            return false;
+        } finally {
+            if (httpConn != null) {
+                httpConn.disconnect();
+            }
+        }
+    }
+
+    private static String obtenerExtensionPorMime(String tipoMime) {
+        return switch (tipoMime) {
+            case "image/png" -> ".png";
+            case "image/jpeg", "image/jpg" -> ".jpg";
+            case "image/gif" -> ".gif";
+            case "image/webp" -> ".webp";
+            case "image/bmp" -> ".bmp";
+            case "image/svg+xml" -> ".svg";
+            default -> ".img";
+        };
     }
 }
